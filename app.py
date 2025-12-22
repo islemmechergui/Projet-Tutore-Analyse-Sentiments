@@ -149,9 +149,15 @@ elif page == "Statistiques & Graphes":
 elif page == "Classification des Sentiments":
     st.title("🤖 Classification des Sentiments")
 
-    st.subheader("Paramètres")
+    st.subheader("⚙️ Paramètres")
 
-    test_size = st.slider("Taille du jeu de test (%)", 10, 50, 20) / 100
+    test_size = st.slider(
+        "Taille du jeu de test (%)",
+        min_value=10,
+        max_value=50,
+        value=20,
+        step=5
+    ) / 100
 
     models = st.multiselect(
         "Choisir les modèles",
@@ -160,7 +166,7 @@ elif page == "Classification des Sentiments":
     )
 
     if st.button("🚀 Lancer la classification"):
-        with st.spinner("Classification en cours..."):
+        with st.spinner("Entraînement et évaluation des modèles..."):
             results = run_classification(
                 df,
                 review_text_col,
@@ -170,43 +176,63 @@ elif page == "Classification des Sentiments":
             )
 
         valid_results = {k: v for k, v in results.items() if "error" not in v}
-        
+
         if not valid_results:
-            st.error("❌ Aucun modèle n'a pu être entraîné. Vérifiez vos données.")
+            st.error("❌ Aucun modèle n'a pu être entraîné.")
             for model_name, result in results.items():
                 if "error" in result:
-                    st.error(f"{model_name}: {result['error']}")
+                    st.error(f"{model_name} : {result['error']}")
             st.stop()
-        
-        for model_name, result in results.items():
-            if "error" in result:
-                st.warning(f"⚠️ {model_name} a échoué : {result['error']}")
 
-        st.subheader("Comparaison des modèles")
-        
+        # =========================
+        # Infos globales Train/Test
+        # =========================
+        st.subheader("📌 Répartition des données")
+
+        example_model = next(iter(valid_results.values()))
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Train (%)", f"{example_model['train_percent']} %")
+        col2.metric("Test (%)", f"{example_model['test_percent']} %")
+        col3.metric("Train size", example_model["train_size"])
+        col4.metric("Test size", example_model["test_size"])
+
+        # =========================
+        # Comparaison des modèles
+        # =========================
+        st.subheader("🏁 Comparaison des modèles")
+
         best_model = max(valid_results.items(), key=lambda x: x[1]["accuracy"])
-        st.success(f"🏆 **Meilleur modèle : {best_model[0]}** avec une accuracy de **{best_model[1]['accuracy']:.4f}**")
-        
+        st.success(
+            f"🏆 **Meilleur modèle : {best_model[0]}** "
+            f"(Accuracy = {best_model[1]['accuracy']:.4f})"
+        )
+
         fig = px.bar(
             x=list(valid_results.keys()),
             y=[v["accuracy"] for v in valid_results.values()],
             text=[f"{v['accuracy']:.3f}" for v in valid_results.values()],
-            labels={"x": "Modèle", "y": "Accuracy"}
+            labels={"x": "Modèle", "y": "Accuracy"},
+            title="Comparaison des accuracies"
         )
-        st.plotly_chart(fig)
+        st.plotly_chart(fig, use_container_width=True)
 
+        # =========================
+        # Détails par modèle
+        # =========================
         st.subheader("📋 Détails des modèles")
-        
-        for model_name in valid_results.keys():
+
+        for model_name, model in valid_results.items():
             with st.expander(f"📊 {model_name}"):
-                model = valid_results[model_name]
-                
-                st.write(f"**Accuracy : {model['accuracy']:.4f}**")
-                
-                st.write("**Rapport de classification :**")
+
+                col1, col2 = st.columns(2)
+                col1.metric("Accuracy", f"{model['accuracy']:.4f}")
+                col2.metric("Temps d'entraînement (s)", model["training_time"])
+
+                st.markdown("**📑 Rapport de classification**")
                 st.dataframe(pd.DataFrame(model["report"]).transpose())
-                
-                st.write("**Matrice de confusion :**")
+
+                st.markdown("**🔍 Matrice de confusion**")
                 fig, ax = plt.subplots(figsize=(6, 5))
                 sns.heatmap(
                     model["confusion_matrix"],
@@ -219,8 +245,14 @@ elif page == "Classification des Sentiments":
                 )
                 ax.set_xlabel("Prédiction")
                 ax.set_ylabel("Réel")
-                ax.set_title(f"Matrice de confusion - {model_name}")
+                ax.set_title(f"Matrice de confusion – {model_name}")
                 st.pyplot(fig)
+
+      
+        st.success(
+            "💾 Le meilleur modèle a été sauvegardé avec le vectoriseur TF-IDF "
+            "dans le fichier **sentiment_model.pkl**"
+        )
 
 elif page == "Dataset Nettoyé":
     st.title("💾 Dataset Nettoyé")

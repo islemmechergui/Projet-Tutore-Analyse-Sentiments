@@ -3,6 +3,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+import pickle
+import time
 
 
 def run_classification(
@@ -10,8 +12,12 @@ def run_classification(
     text_col,
     label_col="label",
     test_size=0.2,
-    models_choice=("Logistic Regression", "Naive Bayes")
+    models_choice=("Logistic Regression", "Naive Bayes"),
+    save_model=True
 ):
+    # ===============================
+    # Préparation des données
+    # ===============================
     df = df[[text_col, label_col]].dropna()
     df[text_col] = df[text_col].astype(str)
 
@@ -26,15 +32,14 @@ def run_classification(
         stratify=df[label_col]
     )
 
+    # ===============================
+    # Vectorisation TF-IDF
+    # ===============================
     tfidf = TfidfVectorizer(
         max_features=15000,
         ngram_range=(1, 2),
         min_df=3,
         max_df=0.9,
-        norm=None,
-        use_idf=True,
-        smooth_idf=True,
-        sublinear_tf=False,
         stop_words="english"
     )
 
@@ -42,8 +47,16 @@ def run_classification(
     X_test_vec = tfidf.transform(X_test)
 
     results = {}
+    best_model = None
+    best_accuracy = 0
+    best_model_name = ""
 
+    # ===============================
+    # Logistic Regression
+    # ===============================
     if "Logistic Regression" in models_choice:
+        start = time.time()
+
         lr = LogisticRegression(
             max_iter=1000,
             class_weight="balanced",
@@ -53,8 +66,15 @@ def run_classification(
         lr.fit(X_train_vec, y_train)
         y_pred = lr.predict(X_test_vec)
 
+        acc = accuracy_score(y_test, y_pred)
+
         results["Logistic Regression"] = {
-            "accuracy": accuracy_score(y_test, y_pred),
+            "accuracy": acc,
+            "train_size": len(X_train),
+            "test_size": len(X_test),
+            "train_percent": round((1 - test_size) * 100, 2),
+            "test_percent": round(test_size * 100, 2),
+            "training_time": round(time.time() - start, 2),
             "report": classification_report(
                 y_test,
                 y_pred,
@@ -70,14 +90,31 @@ def run_classification(
             )
         }
 
+        if acc > best_accuracy:
+            best_accuracy = acc
+            best_model = lr
+            best_model_name = "Logistic Regression"
+
+    # ===============================
+    # Naive Bayes
+    # ===============================
     if "Naive Bayes" in models_choice:
         try:
+            start = time.time()
+
             nb = MultinomialNB(alpha=1.0)
             nb.fit(X_train_vec, y_train)
             y_pred = nb.predict(X_test_vec)
 
+            acc = accuracy_score(y_test, y_pred)
+
             results["Naive Bayes"] = {
-                "accuracy": accuracy_score(y_test, y_pred),
+                "accuracy": acc,
+                "train_size": len(X_train),
+                "test_size": len(X_test),
+                "train_percent": round((1 - test_size) * 100, 2),
+                "test_percent": round(test_size * 100, 2),
+                "training_time": round(time.time() - start, 2),
                 "report": classification_report(
                     y_test,
                     y_pred,
@@ -93,7 +130,27 @@ def run_classification(
                 )
             }
 
+            if acc > best_accuracy:
+                best_accuracy = acc
+                best_model = nb
+                best_model_name = "Naive Bayes"
+
         except Exception as e:
             results["Naive Bayes"] = {"error": str(e)}
+
+    # ===============================
+    # Sauvegarde du meilleur modèle
+    # ===============================
+    if save_model and best_model is not None:
+        with open("sentiment_model.pkl", "wb") as f:
+            pickle.dump(
+                {
+                    "model": best_model,
+                    "vectorizer": tfidf,
+                    "model_name": best_model_name,
+                    "accuracy": best_accuracy
+                },
+                f
+            )
 
     return results
