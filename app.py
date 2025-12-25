@@ -7,6 +7,9 @@ from wordcloud import WordCloud
 
 from classification import run_classification
 
+from summarization import summarize_text_tfidf
+
+
 st.set_page_config(
     page_title="Analyse de Sentiments Amazon",
     page_icon="🧠",
@@ -29,6 +32,7 @@ page = st.sidebar.radio(
         "Introduction",
         "Statistiques & Graphes",
         "Classification des Sentiments",
+        "Résumé Automatique",
         "Dataset Nettoyé"
     ]
 )
@@ -271,3 +275,45 @@ elif page == "Dataset Nettoyé":
         file_name="amazon_reviews_cleaned.csv",
         mime="text/csv"
     )
+
+
+
+elif page == "Résumé Automatique":
+    st.title("📝 Résumé Automatique (TF-IDF)")
+
+    st.markdown("""
+    Cette section utilise l'approche **Extractive TF-IDF**. 
+    Elle identifie et extrait les segments les plus riches en mots-clés 
+    pour générer un résumé fidèle au texte original.
+    """)
+
+    mode = st.radio(
+        "Source du texte",
+        ["Saisir un texte manuel", "Sélectionner une review du dataset"]
+    )
+
+    n_sent = st.slider("Nombre de segments à extraire", 1, 10, 3)
+
+    if mode == "Saisir un texte manuel":
+        user_text = st.text_area("Collez une review ici :", height=200)
+        if st.button("✨ Résumer"):
+            if user_text:
+                summary = summarize_text_tfidf(user_text, n_sent)
+                st.success("Résumé :")
+                st.write(summary)
+            else:
+                st.warning("Veuillez entrer du texte.")
+
+    else:
+        if review_text_col:
+            # On prend les 100 premières pour la fluidité du selectbox
+            options = df[review_text_col].dropna().unique()[:100]
+            selected_review = st.selectbox("Choisissez une review :", options)
+            
+            if st.button("✨ Résumer cette review"):
+                summary = summarize_text_tfidf(selected_review, n_sent)
+                st.info("📌 Texte original :")
+                st.write(selected_review)
+                st.success("✅ Résumé :")
+                st.write(summary)
+
