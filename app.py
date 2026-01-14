@@ -14,6 +14,9 @@ from summarization import summarize_text_tfidf
 
 from dashboard import run_dashboard
 
+from chatbot import run_chatbot
+
+
 st.set_page_config(
     page_title="Analyse de Sentiments Amazon",
     page_icon="🧠",
@@ -133,6 +136,7 @@ page = st.sidebar.radio(
         "Classification des Sentiments",
         "Résumé Automatique",
         "Analyse via Transformers",
+        "Chatbot",
         "Dashboard",
         "Dataset Nettoyé"
     ]
@@ -718,3 +722,22 @@ elif page == "Résumé Automatique":
 
 elif page == "Dashboard":
     run_dashboard(df, review_text_col, country_col)
+
+    
+            # =========================
+            # chatbot
+            # =========================
+
+elif page == "Chatbot":
+    model_name = st.sidebar.selectbox(
+        "Modèle du chatbot",
+        options=[
+            "cmarkea/distilcamembert-base-sentiment",
+            "cardiffnlp/twitter-xlm-roberta-base-sentiment",
+            "nlptown/bert-base-multilingual-uncased-sentiment",
+        ],
+        index=0,
+        key="chatbot_model_selector"
+    )
+    
+    run_chatbot(hf_predict_text, model_name)
