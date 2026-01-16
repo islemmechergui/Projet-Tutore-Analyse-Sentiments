@@ -206,6 +206,7 @@ if page == "Introduction":
         st.error(f"❌ Impossible de charger le dataset original : {str(e)}")
 
 elif page == "Statistiques & Graphes":
+
     st.title("📊 Statistiques & Visualisations")
 
     # --- 1️⃣ CSS pour titres, cartes et graphiques ---
@@ -218,50 +219,51 @@ elif page == "Statistiques & Graphes":
              -webkit-background-clip: text; -webkit-text-fill-color: transparent; 
              padding-top: 15px; border-bottom: 2px solid #f0f2f6; }
 
-        [data-testid="stMetricLabel"] p {
-            font-size: 1.1rem !important; font-weight: 700 !important; color: #1f4e79 !important;
-            text-transform: uppercase; text-align: center; opacity: 0.9;
-        }
-
         [data-testid="stMetric"] {
             background-color: #ffffff; padding: 15px; border-radius: 12px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08); border: 1px solid #e6e9ef;
-            text-align: center;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e6e9ef; text-align: center;
         }
 
-        .main { background-color: #f0f2f6; }
-        .stPlotlyChart, .stPyplot { 
+        .stPlotlyChart, .stPyplot {
             background-color: #ffffff; border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 10px;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # --- 2️⃣ KPI Cards ---
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Reviews", len(df))
     col2.metric("Reviews Positifs", (df["label"] == 1).sum())
     col3.metric("Reviews Neutres", (df["label"] == 0).sum())
     col4.metric("Reviews Négatifs", (df["label"] == -1).sum())
 
-    # --- 3️⃣ Répartition des sentiments (Seaborn) ---
+    # --- 3️⃣ Répartition des sentiments ---
     st.subheader("Répartition des sentiments")
     fig, ax = plt.subplots()
-    sns.countplot(x=df["label"].astype(str), data=df, ax=ax,
-                  palette={'-1':"#EF553B", '0':"#FECB52", '1':"#00CC96"})
+    sns.countplot(
+        x=df["label"].astype(str),
+        palette={'-1': "#EF553B", '0': "#FECB52", '1': "#00CC96"},
+        ax=ax
+    )
     ax.set_xlabel("Sentiment (-1, 0, 1)")
     ax.set_ylabel("Nombre")
     st.pyplot(fig)
 
-    # --- 4️⃣ Distribution des ratings (Plotly) ---
+    # --- 4️⃣ Distribution des ratings ---
     if "numeric_rating" in df.columns:
         st.subheader("Distribution des Ratings")
-        fig = px.histogram(df, x="numeric_rating", nbins=5,
-                           color_discrete_sequence=["#1f4e79"], template="plotly_white")
+        fig = px.histogram(
+            df,
+            x="numeric_rating",
+            nbins=5,
+            color_discrete_sequence=["#1f4e79"],
+            template="plotly_white"
+        )
         fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
 
-    # --- 5️⃣ Top 10 pays (Plotly) ---
+    # --- 5️⃣ Top 10 pays ---
     if country_col and country_col in df.columns:
         st.subheader("Top 10 pays")
         top = df[country_col].value_counts().head(10).reset_index()
@@ -271,71 +273,53 @@ elif page == "Statistiques & Graphes":
         fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
 
-    # --- 6️⃣ Carte géographique des reviews (Plotly) ---
-    if country_col and country_col in df.columns:
-        st.subheader("🌎 Répartition géographique des reviews")
-        country_counts = df[country_col].value_counts().reset_index()
-        country_counts.columns = ["country", "reviews_count"]
+    # --- 6️⃣ Nombre d'avis par date ---
+    date_col = "Review Date" if "Review Date" in df.columns else None
+    if date_col:
+        st.subheader("📅 Évolution du nombre d'avis")
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        df["Année"] = df[date_col].dt.year
+        df["Mois"] = df[date_col].dt.to_period("M").astype(str)
 
-        fig_map = px.choropleth(
-            country_counts,
-            locations="country",
-            locationmode="country names",
-            color="reviews_count",
-            color_continuous_scale="Blues",
-            title="Nombre de reviews par pays",
-            template="plotly_white"
-        )
-        fig_map.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin={"r":0,"t":30,"l":0,"b":0})
-        st.plotly_chart(fig_map, use_container_width=True)
+        niveau = st.radio("Afficher par :", ["Année", "Mois"], horizontal=True)
+        data_time = df.groupby(niveau).size().reset_index(name="Nombre d'avis").sort_values(niveau)
 
-        fig_scatter = px.scatter_geo(
-            country_counts,
-            locations="country",
-            locationmode="country names",
-            size="reviews_count",
-            hover_name="country",
-            projection="natural earth",
-            title="Reviews par pays (points proportionnels)",
-            template="plotly_white"
-        )
-        fig_scatter.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin={"r":0,"t":30,"l":0,"b":0})
-        st.plotly_chart(fig_scatter, use_container_width=True)
+        fig_time = px.line(data_time, x=niveau, y="Nombre d'avis",
+                           markers=True, title=f"Évolution du nombre d'avis par {niveau.lower()}",
+                           template="plotly_white")
+        fig_time.update_layout(xaxis_title=niveau, yaxis_title="Nombre d'avis",
+                               paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_time, use_container_width=True)
+    else:
+        st.warning("⚠️ Aucune colonne de date détectée dans le dataset.")
 
-    # --- 7️⃣ Nuages de mots (Positifs / Négatifs) ---
+    # --- 7️⃣ Nuages de mots ---
     st.subheader("Nuages de mots")
     text_pos = " ".join(df[df["label"] == 1][review_text_col].dropna())
     text_neg = " ".join(df[df["label"] == -1][review_text_col].dropna())
-
     col1, col2 = st.columns(2)
     if text_pos:
-        wc = WordCloud(width=500, height=400, background_color="white").generate(text_pos)
+        wc = WordCloud(background_color="white").generate(text_pos)
         fig, ax = plt.subplots()
         ax.imshow(wc, interpolation="bilinear")
         ax.axis("off")
         ax.set_title("Positifs")
         col1.pyplot(fig)
-
     if text_neg:
-        wc = WordCloud(width=500, height=400, background_color="white").generate(text_neg)
+        wc = WordCloud(background_color="white").generate(text_neg)
         fig, ax = plt.subplots()
         ax.imshow(wc, interpolation="bilinear")
         ax.axis("off")
         ax.set_title("Négatifs")
         col2.pyplot(fig)
 
-    # --- 8️⃣ Analyse Sémantique Approfondie (Bigrammes) ---
+    # --- 8️⃣ Analyse Sémantique Approfondie ---
     st.subheader("🔍 Analyse Sémantique Approfondie")
     from collections import Counter
 
     def get_top_phrases(sentiment_label, top_n=10):
-        text = " ".join(
-            df[df["label"] == sentiment_label][review_text_col]
-            .dropna()
-            .astype(str)
-            .str.lower()
-        )
-        custom_stopwords = {'amazon', 'product', 'item', 'would', 'customer', 'really', 'this', 'that'}
+        text = " ".join(df[df["label"] == sentiment_label][review_text_col].dropna().astype(str).str.lower())
+        custom_stopwords = {'amazon','product','item','would','customer','really','this','that'}
         words = [w for w in text.split() if len(w) > 3 and w not in custom_stopwords]
         bigrams = [" ".join(pair) for pair in zip(words, words[1:])]
         return pd.DataFrame(Counter(bigrams).most_common(top_n), columns=['Phrase', 'Fréquence'])
@@ -344,52 +328,30 @@ elif page == "Statistiques & Graphes":
     df_neg = get_top_phrases(-1)
 
     col_left, col_right = st.columns(2)
-
     with col_left:
         st.write("**✅ Top 10 Expressions Positives**")
         if not df_pos.empty:
-            fig_pos = px.bar(
-                df_pos,
-                x='Fréquence',
-                y='Phrase',
-                orientation='h',
-                color='Fréquence',
-                color_continuous_scale='Greens',
-                template="plotly_white"
-            )
-            fig_pos.update_layout(
-                yaxis={'categoryorder':'total ascending'},
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)"
-            )
+            fig_pos = px.bar(df_pos, x='Fréquence', y='Phrase', orientation='h',
+                             color='Fréquence', color_continuous_scale='Greens',
+                             template="plotly_white")
+            fig_pos.update_layout(yaxis={'categoryorder':'total ascending'},
+                                  plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_pos, use_container_width=True)
         else:
             st.write("Pas de données positives disponibles.")
-
     with col_right:
         st.write("**❌ Top 10 Expressions Négatives**")
         if not df_neg.empty:
-            fig_neg = px.bar(
-                df_neg,
-                x='Fréquence',
-                y='Phrase',
-                orientation='h',
-                color='Fréquence',
-                color_continuous_scale='Reds',
-                template="plotly_white"
-            )
-            fig_neg.update_layout(
-                yaxis={'categoryorder':'total ascending'},
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)"
-            )
+            fig_neg = px.bar(df_neg, x='Fréquence', y='Phrase', orientation='h',
+                             color='Fréquence', color_continuous_scale='Reds',
+                             template="plotly_white")
+            fig_neg.update_layout(yaxis={'categoryorder':'total ascending'},
+                                  plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig_neg, use_container_width=True)
         else:
             st.write("Pas de données négatives disponibles.")
 
-
-
-
+            
 elif page == "Classification des Sentiments":
     st.title("🤖 Classification des Sentiments")
 
