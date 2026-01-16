@@ -386,6 +386,7 @@ elif page == "Classification des Sentiments":
                 models
             )
 
+        # Garder uniquement les modèles valides
         valid_results = {k: v for k, v in results.items() if "error" not in v}
 
         if not valid_results:
@@ -396,7 +397,7 @@ elif page == "Classification des Sentiments":
             st.stop()
 
         # =========================
-        # Infos globales Train/Test
+        # 📌 Infos Train / Test
         # =========================
         st.subheader("📌 Répartition des données")
 
@@ -409,36 +410,85 @@ elif page == "Classification des Sentiments":
         col4.metric("Test size", example_model["test_size"])
 
         # =========================
-        # Comparaison des modèles
+        # 🏁 Comparaison des modèles (Accuracy, F1, Recall)
         # =========================
         st.subheader("🏁 Comparaison des modèles")
 
-        best_model = max(valid_results.items(), key=lambda x: x[1]["accuracy"])
-        st.success(
-            f"🏆 **Meilleur modèle : {best_model[0]}** "
-            f"(Accuracy = {best_model[1]['accuracy']:.4f})"
+        comparison_df = pd.DataFrame({
+            "Modèle": valid_results.keys(),
+            "Accuracy": [v["accuracy"] for v in valid_results.values()],
+            "F1-score (macro)": [
+                v["report"]["macro avg"]["f1-score"] for v in valid_results.values()
+            ],
+            "Recall (macro)": [
+                v["report"]["macro avg"]["recall"] for v in valid_results.values()
+            ]
+        })
+
+        # Tableau comparatif
+        st.markdown("### 📊 Performances globales")
+        st.dataframe(
+            comparison_df.style.format({
+                "Accuracy": "{:.3f}",
+                "F1-score (macro)": "{:.3f}",
+                "Recall (macro)": "{:.3f}"
+            }),
+            use_container_width=True
         )
 
+        # Graphique comparatif
         fig = px.bar(
-            x=list(valid_results.keys()),
-            y=[v["accuracy"] for v in valid_results.values()],
-            text=[f"{v['accuracy']:.3f}" for v in valid_results.values()],
-            labels={"x": "Modèle", "y": "Accuracy"},
-            title="Comparaison des accuracies"
+            comparison_df.melt(
+                id_vars="Modèle",
+                var_name="Métrique",
+                value_name="Score"
+            ),
+            x="Modèle",
+            y="Score",
+            color="Métrique",
+            barmode="group",
+            text_auto=".3f",
+            title="Comparaison des modèles selon Accuracy, F1-score et Recall",
+            template="plotly_white"
         )
+
+        fig.update_layout(
+            yaxis=dict(range=[0, 1]),
+            legend_title_text="Métrique"
+        )
+
         st.plotly_chart(fig, use_container_width=True)
 
         # =========================
-        # Détails par modèle
+        # 🏆 Meilleur modèle (selon F1-score)
+        # =========================
+        best_model = comparison_df.sort_values(
+            by="F1-score (macro)", ascending=False
+        ).iloc[0]
+
+        st.success(
+            f"🏆 **Meilleur modèle : {best_model['Modèle']}** "
+            f"(F1-score macro = {best_model['F1-score (macro)']:.3f})"
+        )
+
+        # =========================
+        # 📋 Détails par modèle
         # =========================
         st.subheader("📋 Détails des modèles")
 
         for model_name, model in valid_results.items():
             with st.expander(f"📊 {model_name}"):
 
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 col1.metric("Accuracy", f"{model['accuracy']:.4f}")
-                col2.metric("Temps d'entraînement (s)", model["training_time"])
+                col2.metric(
+                    "F1-score (macro)",
+                    f"{model['report']['macro avg']['f1-score']:.4f}"
+                )
+                col3.metric(
+                    "Recall (macro)",
+                    f"{model['report']['macro avg']['recall']:.4f}"
+                )
 
                 st.markdown("**📑 Rapport de classification**")
                 st.dataframe(pd.DataFrame(model["report"]).transpose())
@@ -459,29 +509,11 @@ elif page == "Classification des Sentiments":
                 ax.set_title(f"Matrice de confusion – {model_name}")
                 st.pyplot(fig)
 
-      
         st.success(
             "💾 Le meilleur modèle a été sauvegardé avec le vectoriseur TF-IDF "
             "dans le fichier **sentiment_model.pkl**"
         )
 
-elif page == "Dataset Nettoyé":
-    st.title("💾 Dataset Nettoyé")
-
-    cols = [review_text_col, "numeric_rating", "label"]
-    if review_title_col:
-        cols.insert(1, review_title_col)
-    if country_col:
-        cols.append(country_col)
-
-    st.dataframe(df[cols].reset_index(drop=True))
-
-    st.download_button(
-        "📥 Télécharger le dataset",
-        data=df[cols].to_csv(index=False).encode("utf-8"),
-        file_name="amazon_reviews_cleaned.csv",
-        mime="text/csv"
-    )
 
 elif page == "Analyse via Transformers":
     st.title("🤖 Analyse de Sentiments via Transformers")
