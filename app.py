@@ -13,6 +13,9 @@ from classification import run_classification
 from summarization import summarize_text_tfidf
 
 
+from chatbot import run_chatbot
+
+
 st.set_page_config(
     page_title="Analyse de Sentiments Amazon",
     page_icon="🧠",
@@ -32,7 +35,8 @@ h3 {color:#2e75b6;}
 # Fonctions Transformers avec cache Streamlit
 # ================================
 
-DEFAULT_HF_MODEL = "cmarkea/distilcamembert-base-sentiment"
+# Modèle optimisé pour l'anglais et les avis produits
+DEFAULT_HF_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
 
 path_cleaned = "data/amazon_reviews_cleaned.csv"   # dataset nettoyé
 path_raw = "data/Amazon_Reviews.csv"        
@@ -135,6 +139,7 @@ page = st.sidebar.radio(
         "Classification des Sentiments",
         "Résumé Automatique",
         "Analyse via Transformers",
+        "Chatbot",
         "Dataset Nettoyé"
     ]
 )
@@ -494,47 +499,71 @@ elif page == "Analyse via Transformers":
 
     st.subheader("⚙️ Configuration du modèle")
     
-    col1, col2 = st.columns([2, 1])
+    # Modèle fixe optimisé pour l'anglais
+    model_name = DEFAULT_HF_MODEL
     
-    with col1:
-        model_name = st.selectbox(
-            "Sélectionnez le modèle Hugging Face",
-            options=[
-                "cmarkea/distilcamembert-base-sentiment",
-                "cardiffnlp/twitter-xlm-roberta-base-sentiment",
-                "nlptown/bert-base-multilingual-uncased-sentiment",
-            ],
-            index=0,
-            help="CamemBERT pour français, XLM-RoBERTa pour multilingue"
-        )
-    
-    with col2:
-        st.info(f"""
-        **Modèle actuel:**  
-        `{model_name.split('/')[-1][:25]}...`
-        """)
+    st.info(f"""  
+    🤖 **Modèle utilisé :** DistilBERT (SST-2)  
+    📚 **Spécialisation :** Analyse de sentiments en anglais  
+    🎯 **Optimisé pour :** Avis de produits et commentaires  
+    ⚡ **Avantages :** Rapide, précis, léger (distillé de BERT)  
+    """)
 
     # =========================
-    # Prédiction texte unique
+    # Prédiction sur un commentaire du dataset
     # =========================
-    st.subheader("📝 Test sur un texte unique")
+    st.subheader("📝 Analyse d'un commentaire du dataset")
     
-    with st.expander("✍️ Entrez votre texte", expanded=True):
-        user_text = st.text_area(
-            "Texte à analyser",
-            value="Ce produit est absolument fantastique ! Je le recommande vivement.",
-            height=120,
-            help="Entrez n'importe quel avis ou commentaire"
-        )
+    try:
+        # Vérifier que le dataset n'est pas vide
+        if df.empty:
+            st.error("❌ Le dataset est vide. Impossible de charger les commentaires.")
+            st.stop()
         
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            predict_btn = st.button("🔮 Analyser", type="primary", use_container_width=True)
+        # Vérifier que la colonne de texte existe
+        if review_text_col is None or review_text_col not in df.columns:
+            st.error("❌ Aucune colonne de texte détectée dans le dataset.")
+            st.stop()
         
-        if predict_btn and user_text.strip():
+        # Extraire les commentaires non vides
+        comments_df = df[review_text_col].dropna()
+        
+        if len(comments_df) == 0:
+            st.error("❌ Aucun commentaire valide trouvé dans le dataset.")
+            st.stop()
+        
+        # Limiter à 500 commentaires pour la performance
+        comments_list = comments_df.head(500).tolist()
+        
+        # Créer un dictionnaire pour l'affichage (prévisualisation limitée à 100 caractères)
+        display_options = [f"{i+1}. {str(comment)[:100]}..." if len(str(comment)) > 100 else f"{i+1}. {str(comment)}" 
+                          for i, comment in enumerate(comments_list)]
+        
+        with st.expander("🔍 Sélectionnez un commentaire", expanded=True):
+            st.markdown(f"**{len(comments_list)} commentaires disponibles** (limité à 500 pour la performance)")
+            
+            selected_index = st.selectbox(
+                "Choisissez un commentaire à analyser :",
+                options=range(len(comments_list)),
+                format_func=lambda x: display_options[x],
+                help="Sélectionnez un commentaire dans la liste déroulante"
+            )
+            
+            # Récupérer le commentaire complet sélectionné
+            selected_comment = comments_list[selected_index]
+            
+            # Afficher le commentaire complet sélectionné
+            st.info("**📄 Commentaire sélectionné :**")
+            st.write(selected_comment)
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                predict_btn = st.button("🔮 Analyser", type="primary", use_container_width=True)
+        
+        if predict_btn:
             try:
                 with st.spinner("🔄 Analyse en cours..."):
-                    res = hf_predict_text(user_text, model_name)
+                    res = hf_predict_text(selected_comment, model_name)
                 
                 if "error" in res:
                     st.error(f"❌ {res['error']}")
@@ -545,7 +574,6 @@ elif page == "Analyse via Transformers":
                     
                     sentiment_emoji = {1: "😊", 0: "😐", -1: "😞"}
                     sentiment_name = {1: "Positif", 0: "Neutre", -1: "Négatif"}
-                    sentiment_color = {1: "normal", 0: "off", -1: "inverse"}
                     
                     mapped = res["mapped"]
                     
@@ -564,9 +592,22 @@ elif page == "Analyse via Transformers":
                         res["label"],
                         delta=None
                     )
+                    
+                    # Afficher les détails supplémentaires
+                    with st.expander("📊 Détails de la prédiction"):
+                        st.json({
+                            "Label normalisé": mapped,
+                            "Label brut": res["label"],
+                            "Score de confiance": f"{res['score']:.4f}",
+                            "Modèle utilisé": model_name
+                        })
             except Exception as e:
                 st.error(f"❌ Erreur lors de l'analyse: {str(e)}")
                 st.exception(e)
+    
+    except Exception as e:
+        st.error(f"❌ Erreur lors du chargement des commentaires: {str(e)}")
+        st.exception(e)
 
     # =========================
     # Évaluation sur dataset
@@ -816,3 +857,18 @@ elif page == "Résumé Automatique":
                 st.write(selected_review)
                 st.success("✅ Résumé :")
                 st.write(summary)
+
+            # =========================
+            # chatbot
+            # =========================
+
+elif page == "Chatbot":
+    # Utiliser le modèle par défaut optimisé pour l'anglais
+    model_name = DEFAULT_HF_MODEL
+    
+    st.sidebar.info(f"""
+    🤖 **Modèle :** DistilBERT  
+    🌍 **Langue :** Anglais
+    """)
+    
+    run_chatbot(hf_predict_text, model_name)
